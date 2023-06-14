@@ -7,6 +7,7 @@
 #include "DHTesp.h"
 #include <LiquidCrystal_I2C.h>
 #include <Wire.h>
+#include <Ticker.h>
 
 
 // WiFi credentials
@@ -29,7 +30,6 @@ int VirtualBrightness = V4;
 #define LCD_SCL 22
 DHTesp dht;
 LiquidCrystal_I2C lcd(0x27, 16, 2);  // Set the LCD address to 0x27 for a 16 chars and 2 line display
-
 
 int g_Brightness = 5;
 int g_PowerLimit = 3000;
@@ -164,94 +164,15 @@ void printValueReceived(int value, int virtualPin)
   Serial.println(value);
 }
 
-float minTemperature = 100;  // Initialize minimum temperature to a high value
-float maxTemperature = -100;  // Initialize maximum temperature to a low value
-float totalTemperature = 0;  // Initialize total temperature to 0
-int temperatureCount = 0;  // Initialize temperature count to 0
-
-float minHumidity = 100;  // Initialize minimum humidity to a high value
-float maxHumidity = -100;  // Initialize maximum humidity to a low value
-float totalHumidity = 0;  // Initialize total humidity to 0
-int humidityCount = 0;  // Initialize humidity count to 0
-
-void updateTemperature(float temperature) {
-  // Check if 5 minutes have passed since the start time
-  if (millis() - startTime >= FIVE_MINUTES) {
-    // Reset the temperature statistics for a new 5-minute period
-    minTemperature = temperature;
-    maxTemperature = temperature;
-    totalTemperature = temperature;
-    temperatureCount = 1;
-    startTime = millis();  // Update the start time
-  } else {
-  if (temperature < minTemperature) {
-    minTemperature = temperature;  // Update the minimum temperature if the new value is lower
-  }
-  if (temperature > maxTemperature) {
-    maxTemperature = temperature;  // Update the maximum temperature if the new value is higher
-  }
-  totalTemperature += temperature;  // Add the temperature to the total
-  temperatureCount++;  // Increment the temperature count
-  }
-
-    float averageTemperature = totalTemperature / temperatureCount;
-
-    // Print the values to the serial monitor
-  Serial.print("Temperature: Min = ");
-  Serial.print(minTemperature);
-  Serial.print(" Max = ");
-  Serial.print(maxTemperature);
-  Serial.print(" Avg = ");
-  Serial.println(averageTemperature);
-
-
-  // Update the Firebase values
-  Firebase.RTDB.setFloat(&fbdo, "/data/min_temperature", minTemperature);
-  Firebase.RTDB.setFloat(&fbdo, "/data/max_temperature", maxTemperature);
-  Firebase.RTDB.setFloat(&fbdo, "/data/avg_temperature", totalTemperature / temperatureCount);
-
-          LastStatisticsUpdateTime = millis();
-
-}
-
-void updateHumidity(float humidity) {
-  // Check if 5 minutes have passed since the start time
-  if (millis() - startTime >= FIVE_MINUTES) {
-    // Reset the humidity statistics for a new 5-minute period
-    minHumidity = humidity;
-    maxHumidity = humidity;
-    totalHumidity = humidity;
-    humidityCount = 1;
-    startTime = millis();  // Update the start time
-  } else {
-  if (humidity < minHumidity) {
-    minHumidity = humidity;  // Update the minimum humidity if the new value is lower
-  }
-  if (humidity > maxHumidity) {
-    maxHumidity = humidity;  // Update the maximum humidity if the new value is higher
-  }
-  totalHumidity += humidity;  // Add the humidity to the total
-  humidityCount++;  // Increment the humidity count
-  }
-
-    float averageHumidity = totalHumidity / humidityCount;
-
-  // Print and update the Firebase values
-  Serial.print("Humidity: Min = ");
-  Serial.print(minHumidity);
-  Serial.print(" Max = ");
-  Serial.print(maxHumidity);
-  Serial.print(" Avg = ");
-  Serial.println(averageHumidity);
-
-  // Update the Firebase values
-  Firebase.RTDB.setFloat(&fbdo, "/data/min_humidity", minHumidity);
-  Firebase.RTDB.setFloat(&fbdo, "/data/max_humidity", maxHumidity);
-  Firebase.RTDB.setFloat(&fbdo, "/data/avg_humidity", totalHumidity / humidityCount);
-
-          LastStatisticsUpdateTime = millis();
-
-}
+float minTemperature = 0.0;
+float maxTemperature = 0.0;
+float avgTemperature = 0.0;
+float minHumidity = 0.0;
+float maxHumidity = 0.0;
+float avgHumidity = 0.0;
+int numReadings = 0;
+float temperatureSum = 0.0;
+float humiditySum = 0.0;
 
 void onSendSensor()
 {
@@ -268,6 +189,20 @@ void onSendSensor()
   {
     Serial.printf("Temperature: %.2f C, Humidity: %.2f %%\n", 
       temperature, humidity);
+         // Update minimum and maximum values
+  if (numReadings == 0 || temperature < minTemperature) {
+    minTemperature = temperature;
+  }
+  if (numReadings == 0 || temperature > maxTemperature) {
+    maxTemperature = temperature;
+  }
+  if (numReadings == 0 || humidity < minHumidity) {
+    minHumidity = humidity;
+  }
+  if (numReadings == 0 || humidity > maxHumidity) {
+    maxHumidity = humidity;
+  }
+  
     Firebase.RTDB.setFloat(&fbdo, "/data/temperature", temperature);
     Firebase.RTDB.setFloat(&fbdo, "/data/humidity", humidity);
   }
@@ -275,9 +210,60 @@ void onSendSensor()
   {
     Serial.printf("DHT11 error: %d\n", dht.getStatus());
   };
-  LastDataSentTime = millis();
+  
+ // Update sum for calculating average
+  temperatureSum += temperature;
+  humiditySum += humidity;
+  numReadings++;
   Serial.println("sending sensor data to firebase...");
 }
+
+void CalculateStats() {
+  // Check if there are no readings
+  if (numReadings == 0) {
+    // Set default or meaningful values for average
+    avgTemperature = 0.0;
+    avgHumidity = 0.0;
+  } else {
+    // Calculate average values only if there are valid readings
+    if (temperatureSum != 0.0) {
+      avgTemperature = temperatureSum / numReadings;
+    } else {
+      // Handle the case where there are no valid temperature readings
+      avgTemperature = 0.0; // Set a default value or handle it according to your requirements
+    }
+    if (humiditySum != 0.0) {
+      avgHumidity = humiditySum / numReadings;
+    } else {
+      // Handle the case where there are no valid humidity readings
+      avgHumidity = 0.0; // Set a default value or handle it according to your requirements
+    }
+  }
+
+  // Reset variables for next calculation
+  numReadings = 0;
+  temperatureSum = 0.0;
+  humiditySum = 0.0;
+
+  // Print and send the calculated statistics
+  Serial.println("-----Statistics-----");
+  Serial.printf("Min Temperature: %.2f C\n", minTemperature);
+  Serial.printf("Max Temperature: %.2f C\n", maxTemperature);
+  Serial.printf("Average Temperature: %.2f C\n", avgTemperature);
+  Serial.printf("Min Humidity: %.2f %%\n", minHumidity);
+  Serial.printf("Max Humidity: %.2f %%\n", maxHumidity);
+  Serial.printf("Average Humidity: %.2f %%\n", avgHumidity);
+  Serial.println("--------------------");
+
+  // Update the Firebase values
+  Firebase.RTDB.setFloat(&fbdo, "/data/min_temperature", minTemperature);
+  Firebase.RTDB.setFloat(&fbdo, "/data/max_temperature", maxTemperature);
+  Firebase.RTDB.setFloat(&fbdo, "/data/avg_temperature", avgTemperature);
+  Firebase.RTDB.setFloat(&fbdo, "/data/min_humidity", minHumidity);
+  Firebase.RTDB.setFloat(&fbdo, "/data/max_humidity", maxHumidity);
+  Firebase.RTDB.setFloat(&fbdo, "/data/avg_humidity", avgHumidity);
+}
+
 
 void onFirebaseStream(FirebaseStream data)
 {
@@ -343,19 +329,21 @@ void loop()
 {
 	Blynk.run();  
 
-   unsigned long currentMillis = millis();
-  if (currentMillis - LastDataSentTime >= 10 * 1000) {  // Check if 10 seconds have passed
-    onSendSensor();  // Call the function to send sensor data to Firebase
-  }  
-
    // Check if 5 minutes have passed since the last statistics update
-  if (millis() - LastStatisticsUpdateTime >= 300000) {
-   float temperature = dht.getTemperature();
-    float humidity = dht.getHumidity();
-    updateTemperature(temperature);
-    updateHumidity(humidity);
-        LastStatisticsUpdateTime = millis();
+  if (millis() - LastStatisticsUpdateTime >= FIVE_MINUTES) {
+    CalculateStats();
+    LastStatisticsUpdateTime = millis();
   }
+
+  // Check if 10 seconds have passed since the last data sent
+  if (millis() - LastDataSentTime >= 10000) {
+    float humidity = dht.getHumidity();
+    float temperature = dht.getTemperature();
+    onSendSensor();
+    LastDataSentTime = millis();
+  }
+
+  // Do something else if needed
 }
 
 int targetState = 0;  // Variable to store the desired LED state
