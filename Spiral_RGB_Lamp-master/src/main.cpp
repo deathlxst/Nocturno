@@ -207,8 +207,7 @@ void onSendSensor()
     Firebase.RTDB.setFloat(&fbdo, "/data/temperature", temperature);
     Firebase.RTDB.setFloat(&fbdo, "/data/humidity", humidity);
 
-     // Reset the delay for 5 minutes as if it's the first reading
-    LastStatisticsUpdateTime = millis();
+    
   }
   else
   {
@@ -226,6 +225,8 @@ void onSendSensor()
     maxTemperature = -100.0;
     minHumidity = 100.0;
     maxHumidity = 0.0;
+     // Reset the delay for 5 minutes as if it's the first reading
+    LastStatisticsUpdateTime = millis();
   }
 
  // Update sum for calculating average
