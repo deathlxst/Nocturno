@@ -11,8 +11,8 @@
 
 
 // WiFi credentials
-char ssid[] = "sogumi";
-char password[] = "vincun123";
+char ssid[] = "Kokoro";
+char password[] = "oranggila1220";
 
 // Blynk auth token and virtual pins
 char auth[] = "H6WfUYHlpgZAvaTYzQZyjSy4Dc7ewrzG";
@@ -164,6 +164,7 @@ void printValueReceived(int value, int virtualPin)
   Serial.println(value);
 }
 
+bool dhtError = false;  // Flag to track DHT11 error state
 float minTemperature = 0.0;
 float maxTemperature = 0.0;
 float avgTemperature = 0.0;
@@ -205,12 +206,28 @@ void onSendSensor()
   
     Firebase.RTDB.setFloat(&fbdo, "/data/temperature", temperature);
     Firebase.RTDB.setFloat(&fbdo, "/data/humidity", humidity);
+
+     // Reset the delay for 5 minutes as if it's the first reading
+    LastStatisticsUpdateTime = millis();
   }
   else
   {
     Serial.printf("DHT11 error: %d\n", dht.getStatus());
-  };
   
+  // Reset data counts and average values
+    numReadings = 0;
+    temperatureSum = 0.0;
+    humiditySum = 0.0;
+    avgTemperature = 0.0;
+    avgHumidity = 0.0;
+    
+    // Reset min and max values
+    minTemperature = 100.0;
+    maxTemperature = -100.0;
+    minHumidity = 100.0;
+    maxHumidity = 0.0;
+  }
+
  // Update sum for calculating average
   temperatureSum += temperature;
   humiditySum += humidity;
@@ -219,26 +236,10 @@ void onSendSensor()
 }
 
 void CalculateStats() {
-  // Check if there are no readings
-  if (numReadings == 0) {
-    // Set default or meaningful values for average
-    avgTemperature = 0.0;
-    avgHumidity = 0.0;
-  } else {
-    // Calculate average values only if there are valid readings
-    if (temperatureSum != 0.0) {
-      avgTemperature = temperatureSum / numReadings;
-    } else {
-      // Handle the case where there are no valid temperature readings
-      avgTemperature = 0.0; // Set a default value or handle it according to your requirements
-    }
-    if (humiditySum != 0.0) {
-      avgHumidity = humiditySum / numReadings;
-    } else {
-      // Handle the case where there are no valid humidity readings
-      avgHumidity = 0.0; // Set a default value or handle it according to your requirements
-    }
-  }
+
+    // Calculate average values
+    avgTemperature = temperatureSum / numReadings;
+    avgHumidity = humiditySum / numReadings;
 
   // Reset variables for next calculation
   numReadings = 0;
@@ -263,7 +264,6 @@ void CalculateStats() {
   Firebase.RTDB.setFloat(&fbdo, "/data/max_humidity", maxHumidity);
   Firebase.RTDB.setFloat(&fbdo, "/data/avg_humidity", avgHumidity);
 }
-
 
 void onFirebaseStream(FirebaseStream data)
 {
